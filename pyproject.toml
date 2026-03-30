@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+markers = [
+    "integration: runs actual cellpose training (requires cellpose installed)",
+]

@@ -1,0 +1,14 @@
+training:
+  pretrained_model: "cyto3"
+  n_epochs: 1
+  learning_rate: 0.001
+  weight_decay: 0.1
+  batch_size: 1
+  diameter: 30
+  model_name: "ci_test_model"
+  channels: [0, 0]
+
+metadata:
+  source_datasets: [1]
+  trained_by: "ci"
+  workflow_name: "W_Segmentation-Cellpose4"

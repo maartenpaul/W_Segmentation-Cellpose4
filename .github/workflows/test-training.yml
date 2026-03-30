@@ -1,0 +1,45 @@
+name: Test Training Pipeline
+
+on:
+  push:
+    paths:
+      - "train.py"
+      - "entrypoint.sh"
+      - "tests/**"
+      - ".github/workflows/test-training.yml"
+  pull_request:
+    paths:
+      - "train.py"
+      - "entrypoint.sh"
+      - "tests/**"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install test dependencies
+        run: pip install pytest pyyaml
+
+      - name: Run unit tests
+        run: pytest tests/test_train.py -v -k "not integration"
+
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install cellpose (CPU) and test dependencies
+        run: pip install cellpose pyyaml pytest
+
+      - name: Run integration test (1 epoch, CPU)
+        run: pytest tests/test_train.py -v -m integration --timeout=300

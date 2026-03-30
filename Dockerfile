@@ -45,27 +45,27 @@ RUN apt-get update && \
 RUN mkdir -p ${CELLPOSE_LOCAL_MODELS_PATH} && chmod 777 ${CELLPOSE_LOCAL_MODELS_PATH}
 
 # ------------------------------------------------------------------------------
-# Install Miniconda
+# Install Miniforge (conda-forge by default, no Anaconda TOS)
 # ------------------------------------------------------------------------------
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh && \
-    /bin/bash ~/miniconda.sh -b -p /opt/conda && \
-    rm ~/miniconda.sh && \
+RUN wget --quiet https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O ~/miniforge.sh && \
+    /bin/bash ~/miniforge.sh -b -p /opt/conda && \
+    rm ~/miniforge.sh && \
     /opt/conda/bin/conda clean -a -y && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
     echo ". /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
-    conda init bash # Initialize conda for the SHELL
+    conda init bash
 
 # Make conda available in RUN instructions using the initialized shell
 SHELL ["/bin/bash", "--login", "-c"]
 
 # Update conda
-RUN conda update -n base -c defaults conda --yes
+RUN conda update -n base -c conda-forge conda --yes
 
 # ------------------------------------------------------------------------------
 # Create Cytomine environment (Python 3.7)
 # ------------------------------------------------------------------------------
 ENV CYTOMINE_ENV_NAME=cytomine_py37
-RUN conda create -n $CYTOMINE_ENV_NAME python=3.7 -y
+RUN conda create -n $CYTOMINE_ENV_NAME -c conda-forge python=3.7 -y
 
 RUN conda run -n $CYTOMINE_ENV_NAME pip install --no-cache-dir \
         git+https://github.com/cytomine-uliege/Cytomine-python-client.git@v2.7.3
