@@ -89,6 +89,9 @@ RUN conda run -n $CELLPOSE_ENV_NAME conda install -c pytorch -c nvidia \
 # Install Cellpose with GPU support
 RUN conda run -n $CELLPOSE_ENV_NAME pip install --no-cache-dir cellpose[distributed]==4.0.4
 
+# Add PyYAML for training config parsing
+RUN conda run -n $CELLPOSE_ENV_NAME pip install --no-cache-dir pyyaml
+
 # Clean up conda cache
 RUN conda clean -a -y
 
@@ -99,11 +102,14 @@ WORKDIR /app
 # >>> Ensure you are copying the correct wrapper script <<<
 COPY run.py /app/run.py
 COPY descriptor.json /app/descriptor.json
+COPY train.py /app/train.py
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # This is the simplified ENTRYPOINT:
 # It sources conda.sh, activates your Cytomine environment, and then runs run.py
 # The "$@" ensures any arguments you pass to `docker run` are sent to run.py
-ENTRYPOINT ["bash", "-c", "source /opt/conda/etc/profile.d/conda.sh && conda activate cytomine_py37 && exec python /app/run.py \"$@\"", "--"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Set a default command if no arguments are provided to `docker run`.
 # If you run `docker run your_image`, it will implicitly pass "" as "$@" to the ENTRYPOINT.
