@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 source /opt/conda/etc/profile.d/conda.sh
 if [ "$TRAINING_MODE" = "true" ]; then
     echo "Training mode enabled, launching train.py..."

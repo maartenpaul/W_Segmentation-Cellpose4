@@ -13,7 +13,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 import zipfile
 from datetime import datetime
 from glob import glob
@@ -129,12 +128,17 @@ def prepare_cellpose_dirs(infolder, gtfolder, split):
             os.path.join(mask_dir, f"{stem}_masks.tif"),
             os.path.join(mask_dir, f"{stem}_masks.tiff"),
         ]
+        found_mask = False
         for mask_path in mask_candidates:
             if os.path.isfile(mask_path):
                 dst_mask = os.path.join(out_dir, f"{stem}_masks.tif")
                 if not os.path.exists(dst_mask):
                     os.symlink(mask_path, dst_mask)
+                found_mask = True
                 break
+        if not found_mask:
+            print(f"WARNING: No mask found for {os.path.basename(img_path)} "
+                  f"in {mask_dir}")
 
     return out_dir
 
@@ -174,15 +178,20 @@ def run_training(train_dir, val_dir, config):
 
     Returns the subprocess.CompletedProcess result.
     """
-    training = config.get("training", {}) or {}
-
-    pretrained_model = training.get("pretrained_model", "cpsam")
-    n_epochs = training.get("n_epochs", 100)
-    learning_rate = training.get("learning_rate", 0.00001)
-    weight_decay = training.get("weight_decay", 0.1)
-    batch_size = training.get("batch_size", 1)
-    diameter = training.get("diameter", 30)
-    channels = training.get("channels", [0, 0])
+    pretrained_model = get_param(config, "training", "pretrained_model",
+                                 "PRETRAINED_MODEL", "cpsam")
+    n_epochs = get_param(config, "training", "n_epochs",
+                         "N_EPOCHS", 100, cast=int)
+    learning_rate = get_param(config, "training", "learning_rate",
+                              "LEARNING_RATE", 0.00001, cast=float)
+    weight_decay = get_param(config, "training", "weight_decay",
+                             "WEIGHT_DECAY", 0.1, cast=float)
+    batch_size = get_param(config, "training", "batch_size",
+                           "BATCH_SIZE", 1, cast=int)
+    diameter = get_param(config, "training", "diameter",
+                         "DIAMETER", 30, cast=int)
+    channels = get_param(config, "training", "channels",
+                         "CHANNELS", [0, 0])
 
     cmd = [
         "cellpose", "--train",
@@ -211,9 +220,7 @@ def run_training(train_dir, val_dir, config):
         pass
 
     print(f"Running cellpose training: {' '.join(cmd)}")
-    result = subprocess.run(cmd, check=True, text=True, capture_output=True)
-    if result.stdout:
-        print(result.stdout)
+    result = subprocess.run(cmd, check=True, text=True)
     return result
 
 
@@ -347,10 +354,10 @@ def evaluate_test_set(test_dir, model_file, config, outfolder):
 
     print(f"Running test evaluation: {' '.join(cmd)}")
     try:
-        subprocess.run(cmd, check=True, text=True, capture_output=True)
+        subprocess.run(cmd, check=True, text=True)
     except subprocess.CalledProcessError as e:
-        print(f"Test evaluation failed: {e.stderr}")
-        return {"error": str(e.stderr)}
+        print(f"Test evaluation failed: {e}")
+        return {"error": str(e)}
 
     return {
         "test_images": len(images),
@@ -387,7 +394,7 @@ def main(argv):
         print("ERROR: No training images found in infolder/train/")
         sys.exit(1)
     print(f"  train_dir: {train_dir} "
-          f"({len(glob(os.path.join(train_dir, '*.tif')))} files)")
+          f"({len(glob(os.path.join(train_dir, '*.tif')) + glob(os.path.join(train_dir, '*.tiff')))} files)")
 
     val_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "validation")
     if val_dir:
@@ -414,7 +421,7 @@ def main(argv):
         run_training(train_dir, val_dir, config)
         print("Training completed successfully.")
     except subprocess.CalledProcessError as e:
-        print(f"ERROR: Training failed: {e.stderr}")
+        print(f"ERROR: Training failed with exit code {e.returncode}")
         sys.exit(1)
 
     # 6. Find and save trained model
