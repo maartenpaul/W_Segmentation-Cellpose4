@@ -1,5 +1,5 @@
 training:
-  pretrained_model: "cyto3"
+  pretrained_model: "cpsam"
   n_epochs: 1
   learning_rate: 0.001
   weight_decay: 0.1

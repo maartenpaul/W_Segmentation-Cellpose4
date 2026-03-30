@@ -44,7 +44,7 @@ def mock_data(tmp_path):
 
     config = {
         "training": {
-            "pretrained_model": "cyto3",
+            "pretrained_model": "cpsam",
             "n_epochs": 1,
             "learning_rate": 0.001,
             "model_name": "unit_test_model",
@@ -195,7 +195,7 @@ class TestGenerateModelId:
 class TestWriteResults:
     def test_writes_yaml_with_expected_keys(self, tmp_path):
         config = {
-            "training": {"pretrained_model": "cyto3", "n_epochs": 10},
+            "training": {"pretrained_model": "cpsam", "n_epochs": 10},
             "metadata": {"source_datasets": [1], "trained_by": "user1"},
         }
         results = write_results(
@@ -203,7 +203,7 @@ class TestWriteResults:
         )
         assert results["model_id"] == "model_123"
         assert results["model_name"] == "my_model"
-        assert results["pretrained_model"] == "cyto3"
+        assert results["pretrained_model"] == "cpsam"
 
         results_path = tmp_path / "training_results.yaml"
         assert results_path.exists()

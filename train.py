@@ -228,25 +228,32 @@ def run_training(train_dir, val_dir, config):
 # Model output
 # ---------------------------------------------------------------------------
 
-def find_trained_model():
+def find_trained_model(train_dir):
     """Locate the most recently trained cellpose model.
 
-    Cellpose saves trained models to ``$CELLPOSE_LOCAL_MODELS_PATH`` (which
-    defaults to ``/tmp/models/cellpose/`` in this container).  The newest
-    file that is not a built-in model is returned.
+    Cellpose saves trained models to ``<train_dir>/models/`` by default.
+    Falls back to ``$CELLPOSE_LOCAL_MODELS_PATH`` if not found there.
+    The newest model file is returned.
     """
-    models_dir = os.environ.get("CELLPOSE_LOCAL_MODELS_PATH",
-                                "/tmp/models/cellpose/")
-    if not os.path.isdir(models_dir):
-        return None
+    search_dirs = [
+        os.path.join(train_dir, "models"),
+        os.environ.get("CELLPOSE_LOCAL_MODELS_PATH",
+                        "/tmp/models/cellpose/"),
+    ]
 
-    model_files = sorted(
-        [f for f in glob(os.path.join(models_dir, "*"))
-         if os.path.isfile(f)],
-        key=os.path.getmtime,
-        reverse=True,
-    )
-    return model_files[0] if model_files else None
+    for models_dir in search_dirs:
+        if not os.path.isdir(models_dir):
+            continue
+        model_files = sorted(
+            [f for f in glob(os.path.join(models_dir, "*"))
+             if os.path.isfile(f)],
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        if model_files:
+            return model_files[0]
+
+    return None
 
 
 def save_model(model_file, model_id, outfolder):
@@ -425,7 +432,7 @@ def main(argv):
         sys.exit(1)
 
     # 6. Find and save trained model
-    model_file = find_trained_model()
+    model_file = find_trained_model(train_dir)
     if not model_file:
         print("ERROR: Could not find trained model file")
         sys.exit(1)
