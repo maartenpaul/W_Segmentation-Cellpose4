@@ -89,13 +89,20 @@ def get_param(config, yaml_section, yaml_key, env_name, default=None,
 # Directory preparation
 # ---------------------------------------------------------------------------
 
-def prepare_cellpose_dirs(infolder, gtfolder, split):
+def prepare_cellpose_dirs(infolder, gtfolder, split, base_dir=None):
     """Create a cellpose-compatible directory for a given split.
 
     Cellpose expects images and ``<stem>_masks.tif`` files side-by-side in
     the same directory. This function symlinks images from
     ``infolder/<split>/`` and masks from ``gtfolder/<split>/`` into a
-    temporary directory, renaming masks to match the cellpose convention.
+    working directory, renaming masks to match the cellpose convention.
+
+    Parameters
+    ----------
+    base_dir : str or None
+        Parent directory for the working dir.  Defaults to a path under
+        *infolder* so that it lives on the host filesystem (important for
+        Singularity containers where ``/tmp`` is read-only).
 
     Returns the path to the prepared directory, or ``None`` if the split
     directory does not exist or is empty.
@@ -111,7 +118,9 @@ def prepare_cellpose_dirs(infolder, gtfolder, split):
     if not images:
         return None
 
-    out_dir = f"/tmp/cellpose_{split}"
+    if base_dir is None:
+        base_dir = os.path.dirname(infolder.rstrip("/"))
+    out_dir = os.path.join(base_dir, f"cellpose_{split}")
     os.makedirs(out_dir, exist_ok=True)
 
     for img_path in images:
@@ -257,26 +266,34 @@ def find_trained_model(train_dir):
 
 
 def save_model(model_file, model_id, outfolder):
-    """Copy trained model to persistent storage and create a zip for upload.
+    """Copy trained model to outfolder and create a zip for upload.
 
-    1. Copy to ``/tmp/models/<model_id>/`` (bound to ``$MODELS_PATH`` on
-       the host, so the model persists on the Slurm cluster).
+    1. Copy model to ``outfolder/<model_id>/``.
     2. Zip and place in ``outfolder`` for retrieval by biomero.
+    3. Optionally copy to persistent models path if writable.
     """
-    # Persistent copy
+    # Save model into outfolder (always writable — on host /data)
+    model_dir = os.path.join(outfolder, model_id)
+    os.makedirs(model_dir, exist_ok=True)
+    shutil.copy2(model_file, model_dir)
+    print(f"Model saved to {model_dir}")
+
+    # Try to persist to /tmp/models for reuse across runs
     persist_dir = f"/tmp/models/{model_id}"
-    os.makedirs(persist_dir, exist_ok=True)
-    shutil.copy2(model_file, persist_dir)
-    print(f"Model saved to {persist_dir}")
+    try:
+        os.makedirs(persist_dir, exist_ok=True)
+        shutil.copy2(model_file, persist_dir)
+        print(f"Model persisted to {persist_dir}")
+    except (PermissionError, OSError) as e:
+        print(f"Note: Could not persist model to {persist_dir}: {e}")
 
     # Zip for upload
-    os.makedirs(outfolder, exist_ok=True)
     zip_path = os.path.join(outfolder, f"{model_id}.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _dirs, files in os.walk(persist_dir):
+        for root, _dirs, files in os.walk(model_dir):
             for fname in files:
                 fpath = os.path.join(root, fname)
-                arcname = os.path.relpath(fpath, os.path.dirname(persist_dir))
+                arcname = os.path.relpath(fpath, os.path.dirname(model_dir))
                 zf.write(fpath, arcname)
     print(f"Model zipped to {zip_path}")
     return zip_path
@@ -395,22 +412,29 @@ def main(argv):
         print("No config.yaml found, using env vars / defaults")
 
     # 3. Prepare cellpose training directories
-    print("\nPreparing training directories...")
-    train_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "train")
+    #    Use outfolder as base so all writes go to the host filesystem
+    #    (Singularity containers have read-only /tmp).
+    work_dir = os.path.join(args.outfolder, "work")
+    os.makedirs(work_dir, exist_ok=True)
+    print(f"\nPreparing training directories (work_dir: {work_dir})...")
+    train_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "train",
+                                      base_dir=work_dir)
     if not train_dir:
         print("ERROR: No training images found in infolder/train/")
         sys.exit(1)
     print(f"  train_dir: {train_dir} "
           f"({len(glob(os.path.join(train_dir, '*.tif')) + glob(os.path.join(train_dir, '*.tiff')))} files)")
 
-    val_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "validation")
+    val_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "validation",
+                                    base_dir=work_dir)
     if val_dir:
         print(f"  val_dir:   {val_dir} "
               f"({len(glob(os.path.join(val_dir, '*.tif')))} files)")
     else:
         print("  val_dir:   (none)")
 
-    test_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "test")
+    test_dir = prepare_cellpose_dirs(args.infolder, args.gtfolder, "test",
+                                     base_dir=work_dir)
     if test_dir:
         print(f"  test_dir:  {test_dir} "
               f"({len(glob(os.path.join(test_dir, '*.tif')))} files)")
@@ -457,10 +481,9 @@ def main(argv):
                 yaml.dump(results, fh, default_flow_style=False)
             print(f"Updated results with test metrics: {test_metrics}")
 
-    # 9. Cleanup temp dirs
-    for d in [train_dir, val_dir, test_dir]:
-        if d and os.path.isdir(d) and d.startswith("/tmp/cellpose_"):
-            shutil.rmtree(d, ignore_errors=True)
+    # 9. Cleanup work dirs
+    if os.path.isdir(work_dir):
+        shutil.rmtree(work_dir, ignore_errors=True)
 
     print("\n" + "=" * 60)
     print(f"TRAINING COMPLETE — model: {model_id}")
